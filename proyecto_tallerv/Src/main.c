@@ -16,14 +16,34 @@
  ******************************************************************************
  */
 
-#include <stdint.h>
+//#include <stdint.h>
 
-#if !defined(__SOFT_FP__) && defined(__ARM_FP)
-  #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
-#endif
+//#if !defined(__SOFT_FP__) && defined(__ARM_FP)
+  //#warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
+//#endif
 
 int main(void)
 {
-    /* Loop forever */
-	for(;;);
+	int a = 10;
+	    int b = 5;
+
+	    int suma;
+	    int resta;
+	    int multiplicacion;
+	    int division;
+
+	    suma = a + b;
+	    resta = a - b;
+	    multiplicacion = a * b;
+	    division = a / b;
+
+	    printf("Suma: %d\n", suma);
+	    printf("Resta: %d\n", resta);
+	    printf("Multiplicacion: %d\n", multiplicacion);
+	    printf("Division: %d\n", division);
+
+	    while(1)
+	    {
+
+	    }
 }
