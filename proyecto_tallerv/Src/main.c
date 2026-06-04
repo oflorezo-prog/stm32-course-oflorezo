@@ -22,22 +22,115 @@
   //#warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 //#endif
 #include <stm32f4xx.h>
+#include "stm32f4xx.h"
 
-int main(void){
+#include "stm32f4xx.h"
 
-	//RCC->AHB1ENR |= (1<<0);
-	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN ;
-	GPIOA->MODER &= ~(0b11 << (GPIO_MODER_MODE5_Pos))
-	GPIOA->MODER |= (0b01 << GPIO_MODER_MODE5_Pos);
-	GPIOA->ODR |= (1 << 5);
+#include "stm32f4xx.h"
 
+void init_GPIOA(void);
+void init_TIM3(void);
 
+int main(void)
+{
+    init_GPIOA();
+    init_TIM3();
 
+    while(1)
+    {
 
+    }
+}
 
-	    while(1)
-	    {
+//================ GPIO =================
+void init_GPIOA(void)
+{
+    // Activar clock GPIOA
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
 
-	    }
+    // PA5 como salida
+    GPIOA->MODER &= ~(3 << (5 * 2));
+    GPIOA->MODER |=  (1 << (5 * 2));
+}
 
+//================ TIMER =================
+void init_TIM3(void)
+{
+    // Activar clock TIM3
+    RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+
+    // Prescaler
+    // 16 MHz / 16000 = 1000 Hz
+    TIM3->PSC = 15999;
+
+    // 250 ticks = 250 ms
+    TIM3->ARR = 249;
+
+    // Reiniciar contador
+    TIM3->CNT = 0;
+
+    // Habilitar interrupcion update
+    TIM3->DIER |= TIM_DIER_UIE;
+
+    // Habilitar interrupcion TIM3 en NVIC
+    NVIC_EnableIRQ(TIM3_IRQn);
+
+    // Encender timer
+    TIM3->CR1 |= TIM_CR1_CEN;
+}
+
+//================ ISR =================
+void TIM3_IRQHandler(void)
+{
+    // Verificar overflow
+    if(TIM3->SR & TIM_SR_UIF)
+    {
+        // Limpiar UIF
+        TIM3->SR &= ~TIM_SR_UIF;
+
+        // Toggle PA5
+        GPIOA->ODR ^= (1 << 5);
+    }
+}
+//configurando los EXTI
+void init_EXTI(void)
+{
+    // 1. Clock SYSCFG
+    RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+
+    // 2. Seleccionar puerto en EXTICR
+    SYSCFG->EXTICR[0] &= ~(0xF << 12);
+    SYSCFG->EXTICR[0] |=  (0x1 << 12);   // PB3 -> EXTI3
+
+    // 3. Máscara de interrupción
+    EXTI->IMR |= EXTI_IMR_IM3;
+
+    // 4. Flanco
+    EXTI->RTSR |= EXTI_RTSR_TR3;
+
+    // 5. Limpiar bandera pendiente
+    EXTI->PR |= EXTI_PR_PR3;
+
+    // 6. Habilitar IRQ en NVIC
+    NVIC_EnableIRQ(EXTI3_IRQn);
+}
+void EXTI3_IRQHandler(void)
+{
+    if(EXTI->PR & EXTI_PR_PR3)
+    {
+        EXTI->PR |= EXTI_PR_PR3;
+
+        // Código de la interrupción
+    }
+}
+void init_GPIOC(void)
+{
+    // Habilitar reloj GPIOC
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOCEN;
+
+    // PC1 entrada
+    GPIOC->MODER &= ~(3 << (1 * 2));
+
+    // Sin pull-up ni pull-down
+    GPIOC->PUPDR &= ~(3 << (1 * 2));
 }
