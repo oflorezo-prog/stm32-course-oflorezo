@@ -21,116 +21,408 @@
 //#if !defined(__SOFT_FP__) && defined(__ARM_FP)
   //#warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 //#endif
-#include <stm32f4xx.h>
 #include "stm32f4xx.h"
 
-#include "stm32f4xx.h"
+// Variables para el display
+volatile uint16_t contador = 0;
+volatile uint8_t u, d, c, m; // unidades, decenas, centenas, millares (abreviado)
+volatile uint8_t digitoActual = 0;
+volatile uint8_t b10 = 0; // flag para la fotocompuerta 10
+volatile uint8_t b12 = 0; // flag para la fotocompuerta 12
 
-#include "stm32f4xx.h"
-
-void init_GPIOA(void);
-void init_TIM3(void);
+// Prototipos de las funciones
+void apagarTodosLosDigitos(void);
+void activarDigito(uint8_t d);
+void apagarTodosLosSegmentos(void);
+void mostrar8(void);
+void mostrar0(void);
+void mostrar1(void);
+void mostrar2(void);
+void mostrar3(void);
+void mostrar4(void);
+void mostrar5(void);
+void mostrar6(void);
+void mostrar7(void);
+void mostrar9(void);
+void mostrarNumero(uint8_t numero);
+void delay(void);
+void delayLargo(void);
 
 int main(void)
 {
-    init_GPIOA();
-    init_TIM3();
+    // Habilitar los relojes de los perifericos (A, B y C)
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOCEN;
+
+    // Configurar PA8 como salida para el led de power
+    GPIOA->MODER &= ~(3 << (8*2));
+    GPIOA->MODER |=  (1 << (8*2));
+    GPIOA->ODR |= (1 << 8);
+
+    // Configurar pines de los segmentos en Puerto A
+    GPIOA->MODER &= ~(3 << (0*2));
+    GPIOA->MODER |=  (1 << (0*2)); // PA0 -> A
+
+    GPIOA->MODER &= ~(3 << (1*2));
+    GPIOA->MODER |=  (1 << (1*2)); // PA1 -> F
+
+    GPIOA->MODER &= ~(3 << (4*2));
+    GPIOA->MODER |=  (1 << (4*2)); // PA4 -> B
+
+    // Configurar pines en Puerto B (digitos y otros segmentos)
+    GPIOB->MODER &= ~(3 << (0*2));
+    GPIOB->MODER |=  (1 << (0*2)); // D2
+
+    GPIOB->MODER &= ~(3 << (1*2));
+    GPIOB->MODER |=  (1 << (1*2)); // E
+
+    GPIOB->MODER &= ~(3 << (2*2));
+    GPIOB->MODER |=  (1 << (2*2)); // D
+
+    GPIOB->MODER &= ~(3 << (13*2));
+    GPIOB->MODER |=  (1 << (13*2)); // D3
+
+    GPIOB->MODER &= ~(3 << (14*2));
+    GPIOB->MODER |=  (1 << (14*2)); // G
+
+    GPIOB->MODER &= ~(3 << (15*2));
+    GPIOB->MODER |=  (1 << (15*2)); // C
+
+    // Salida para el led parpadeante pc5
+    GPIOC->MODER &= ~(3 << (5*2));
+    GPIOC->MODER |=  (1 << (5*2));
+
+    // Mas digitos en Puerto C
+    GPIOC->MODER &= ~(3 << (1*2));
+    GPIOC->MODER |=  (1 << (1*2)); // D1
+
+    GPIOC->MODER &= ~(3 << (4*2));
+    GPIOC->MODER |=  (1 << (4*2)); // D4
+
+    // Configurar entradas de las fotocompuertas (PC10 y PC12)
+    GPIOC->MODER &= ~(3 << (10*2));
+    GPIOC->MODER &= ~(3 << (12*2));
+
+    // Ponerles pull-up porque si no rebota
+    GPIOC->PUPDR &= ~(3 << (10*2));
+    GPIOC->PUPDR |=  (1 << (10*2));
+
+    GPIOC->PUPDR &= ~(3 << (12*2));
+    GPIOC->PUPDR |=  (1 << (12*2));
+
+    // Configuracion de EXTI para las interrupciones de los pines 10 y 12
+    RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+    SYSCFG->EXTICR[2] &= ~(0xF << 8);   // EXTI10
+    SYSCFG->EXTICR[3] &= ~(0xF << 0);   // EXTI12
+
+    SYSCFG->EXTICR[2] |= (0x2 << 8);    // Mapear a Puerto C
+    SYSCFG->EXTICR[3] |= (0x2 << 0);
+
+    EXTI->RTSR &= ~(1 << 12);
+    EXTI->FTSR |=  (1 << 12);   // Flanco bajada para PC12
+    EXTI->FTSR &= ~(1 << 10);
+
+    EXTI->RTSR |= (1 << 10);   // Flanco subida para PC10 (FIX)
+
+    // Habilitar mascaras de interrupcion
+    EXTI->IMR |= (1 << 10);
+    EXTI->IMR |= (1 << 12);
+    NVIC_EnableIRQ(EXTI15_10_IRQn);
+
+    // Configurar TIM3 para el multiplexado del display (~2ms)
+    RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+    TIM3->PSC = 16000 - 1;
+    TIM3->ARR = 2 - 1;
+    TIM3->CNT = 0;
+    TIM3->DIER |= TIM_DIER_UIE;
+    NVIC_EnableIRQ(TIM3_IRQn);
+    TIM3->CR1 |= TIM_CR1_CEN;
+
+    // Configurar TIM4 para el led de vida y antirebote (100ms)
+    RCC->APB1ENR |= RCC_APB1ENR_TIM4EN;
+    TIM4->PSC = 16000 - 1;
+    TIM4->ARR = 100 - 1;
+    TIM4->CNT = 0;
+    TIM4->DIER |= TIM_DIER_UIE;
+    NVIC_EnableIRQ(TIM4_IRQn);
+    TIM4->CR1 |= TIM_CR1_CEN;
 
     while(1)
     {
-
+        // Descomponer el numero para el display
+        m = contador / 1000;
+        c = (contador / 100) % 10;
+        d  = (contador / 10) % 10;
+        u = contador % 10;
     }
 }
 
-//================ GPIO =================
-void init_GPIOA(void)
+void apagarTodosLosDigitos(void)
 {
-    // Activar clock GPIOA
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
-
-    // PA5 como salida
-    GPIOA->MODER &= ~(3 << (5 * 2));
-    GPIOA->MODER |=  (1 << (5 * 2));
+    GPIOC->ODR |= (1<<1);
+    GPIOB->ODR |= (1<<0);
+    GPIOB->ODR |= (1<<13);
+    GPIOC->ODR |= (1<<4);
 }
 
-//================ TIMER =================
-void init_TIM3(void)
+void activarDigito(uint8_t d)
 {
-    // Activar clock TIM3
-    RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+    apagarTodosLosDigitos();
+    apagarTodosLosSegmentos();
 
-    // Prescaler
-    // 16 MHz / 16000 = 1000 Hz
-    TIM3->PSC = 15999;
-
-    // 250 ticks = 250 ms
-    TIM3->ARR = 249;
-
-    // Reiniciar contador
-    TIM3->CNT = 0;
-
-    // Habilitar interrupcion update
-    TIM3->DIER |= TIM_DIER_UIE;
-
-    // Habilitar interrupcion TIM3 en NVIC
-    NVIC_EnableIRQ(TIM3_IRQn);
-
-    // Encender timer
-    TIM3->CR1 |= TIM_CR1_CEN;
+    switch(d)
+    {
+        case 1:
+            GPIOC->ODR &= ~(1<<1);
+            break;
+        case 2:
+            GPIOB->ODR &= ~(1<<0);
+            break;
+        case 3:
+            GPIOB->ODR &= ~(1<<13);
+            break;
+        case 4:
+            GPIOC->ODR &= ~(1<<4);
+            break;
+    }
 }
 
-//================ ISR =================
+void apagarTodosLosSegmentos(void)
+{
+    GPIOA->ODR |= (1<<0);
+    GPIOA->ODR |= (1<<1);
+    GPIOA->ODR |= (1<<4);
+
+    GPIOB->ODR |= (1<<1);
+    GPIOB->ODR |= (1<<2);
+    GPIOB->ODR |= (1<<14);
+    GPIOB->ODR |= (1<<15);
+}
+
+void mostrar8(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<0);
+    GPIOA->ODR &= ~(1<<1);
+    GPIOA->ODR &= ~(1<<4);
+    GPIOB->ODR &= ~(1<<1);
+    GPIOB->ODR &= ~(1<<2);
+    GPIOB->ODR &= ~(1<<14);
+    GPIOB->ODR &= ~(1<<15);
+}
+
+void mostrar1(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<4);
+    GPIOB->ODR &= ~(1<<15);
+}
+
+void mostrar0(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<0);
+    GPIOA->ODR &= ~(1<<4);
+    GPIOB->ODR &= ~(1<<15);
+    GPIOB->ODR &= ~(1<<2);
+    GPIOB->ODR &= ~(1<<1);
+    GPIOA->ODR &= ~(1<<1);
+}
+
+void mostrar2(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<0);
+    GPIOA->ODR &= ~(1<<4);
+    GPIOB->ODR &= ~(1<<2);
+    GPIOB->ODR &= ~(1<<1);
+    GPIOB->ODR &= ~(1<<14);
+}
+
+void mostrar3(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<0);
+    GPIOA->ODR &= ~(1<<4);
+    GPIOB->ODR &= ~(1<<15);
+    GPIOB->ODR &= ~(1<<2);
+    GPIOB->ODR &= ~(1<<14);
+}
+
+void mostrar4(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<4);
+    GPIOB->ODR &= ~(1<<15);
+    GPIOA->ODR &= ~(1<<1);
+    GPIOB->ODR &= ~(1<<14);
+}
+
+void mostrar5(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<0);
+    GPIOB->ODR &= ~(1<<15);
+    GPIOB->ODR &= ~(1<<2);
+    GPIOA->ODR &= ~(1<<1);
+    GPIOB->ODR &= ~(1<<14);
+}
+
+void mostrar6(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<0);
+    GPIOB->ODR &= ~(1<<15);
+    GPIOB->ODR &= ~(1<<2);
+    GPIOB->ODR &= ~(1<<1);
+    GPIOA->ODR &= ~(1<<1);
+    GPIOB->ODR &= ~(1<<14);
+}
+
+void mostrar7(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<0);
+    GPIOA->ODR &= ~(1<<4);
+    GPIOB->ODR &= ~(1<<15);
+}
+
+void mostrar9(void)
+{
+    apagarTodosLosSegmentos();
+    GPIOA->ODR &= ~(1<<0);
+    GPIOA->ODR &= ~(1<<4);
+    GPIOB->ODR &= ~(1<<15);
+    GPIOB->ODR &= ~(1<<2);
+    GPIOA->ODR &= ~(1<<1);
+    GPIOB->ODR &= ~(1<<14);
+}
+
+void mostrarNumero(uint8_t numero)
+{
+    switch(numero)
+    {
+        case 0:
+            mostrar0();
+            break;
+        case 1:
+            mostrar1();
+            break;
+        case 2:
+            mostrar2();
+            break;
+        case 3:
+            mostrar3();
+            break;
+        case 4:
+            mostrar4();
+            break;
+        case 5:
+            mostrar5();
+            break;
+        case 6:
+            mostrar6();
+            break;
+        case 7:
+            mostrar7();
+            break;
+        case 8:
+            mostrar8();
+            break;
+        case 9:
+            mostrar9();
+            break;
+    }
+}
+
+void delay(void)
+{
+    for(volatile uint32_t i = 0; i < 50000; i++);
+}
+
+void delayLargo(void)
+{
+    for(volatile uint32_t i = 0; i < 500000; i++);
+}
+
+// Interrupcion del Timer 3 para refrescar pantalla
 void TIM3_IRQHandler(void)
 {
-    // Verificar overflow
     if(TIM3->SR & TIM_SR_UIF)
     {
-        // Limpiar UIF
-        TIM3->SR &= ~TIM_SR_UIF;
+        switch(digitoActual)
+        {
+            case 0:
+                activarDigito(1);
+                mostrarNumero(m);
+                break;
+            case 1:
+                activarDigito(2);
+                mostrarNumero(c);
+                break;
+            case 2:
+                activarDigito(3);
+                mostrarNumero(d);
+                break;
+            case 3:
+                activarDigito(4);
+                mostrarNumero(u);
+                break;
+        }
 
-        // Toggle PA5
-        GPIOA->ODR ^= (1 << 5);
+        digitoActual++;
+        if(digitoActual >= 4)
+        {
+            digitoActual = 0;
+        }
+
+        TIM3->SR &= ~TIM_SR_UIF; // limpiar flag
     }
 }
-//configurando los EXTI
-void init_EXTI(void)
+
+// Interrupcion de los pines PC10 y PC12
+void EXTI15_10_IRQHandler(void)
 {
-    // 1. Clock SYSCFG
-    RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
-
-    // 2. Seleccionar puerto en EXTICR
-    SYSCFG->EXTICR[0] &= ~(0xF << 12);
-    SYSCFG->EXTICR[0] |=  (0x1 << 12);   // PB3 -> EXTI3
-
-    // 3. Máscara de interrupción
-    EXTI->IMR |= EXTI_IMR_IM3;
-
-    // 4. Flanco
-    EXTI->RTSR |= EXTI_RTSR_TR3;
-
-    // 5. Limpiar bandera pendiente
-    EXTI->PR |= EXTI_PR_PR3;
-
-    // 6. Habilitar IRQ en NVIC
-    NVIC_EnableIRQ(EXTI3_IRQn);
-}
-void EXTI3_IRQHandler(void)
-{
-    if(EXTI->PR & EXTI_PR_PR3)
+    // Handler para PC10 (Suma al contador)
+    if((EXTI->PR & (1 << 10)) && !b10)
     {
-        EXTI->PR |= EXTI_PR_PR3;
+        EXTI->PR |= (1 << 10);
 
-        // Código de la interrupción
+        if(GPIOC->IDR & (1 << 10))
+        {
+            if(contador == 9999)
+                contador = 0;
+            else
+                contador++;
+        }
+        b10 = 1; // Bloquear hasta que reinicie TIM4
+    }
+
+    // Handler para PC12 (Resta al contador)
+    if((EXTI->PR & (1 << 12)) && !b12)
+    {
+        EXTI->PR |= (1 << 12);
+
+        if(contador == 0)
+            contador = 9999;
+        else
+            contador--;
+
+        b12 = 1; // Bloquear
     }
 }
-void init_GPIOC(void)
+
+// Timer 4 para parpadeo del led de estado y resetear bloqueos
+void TIM4_IRQHandler(void)
 {
-    // Habilitar reloj GPIOC
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOCEN;
+    if(TIM4->SR & TIM_SR_UIF)
+    {
+        GPIOC->ODR ^= (1 << 5); // Toglear led pin C5
 
-    // PC1 entrada
-    GPIOC->MODER &= ~(3 << (1 * 2));
+        b10 = 0; // Libero el bloqueo del antirebote
+        b12 = 0;
 
-    // Sin pull-up ni pull-down
-    GPIOC->PUPDR &= ~(3 << (1 * 2));
+        TIM4->SR &= ~TIM_SR_UIF;
+    }
 }

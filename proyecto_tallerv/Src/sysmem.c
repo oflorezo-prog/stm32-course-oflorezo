@@ -52,26 +52,28 @@ static uint8_t *__sbrk_heap_end = NULL;
  */
 void *_sbrk(ptrdiff_t incr)
 {
-	int a = 10;
-	    int b = 5;
+  extern uint8_t _end; /* Symbol defined in the linker script */
+  extern uint8_t _estack; /* Symbol defined in the linker script */
+  extern uint32_t _Min_Stack_Size; /* Symbol defined in the linker script */
+  const uint32_t stack_limit = (uint32_t)&_estack - (uint32_t)&_Min_Stack_Size;
+  const uint8_t *max_heap = (uint8_t *)stack_limit;
+  uint8_t *prev_heap_end;
 
-	    int suma;
-	    int resta;
-	    int multiplicacion;
-	    int division;
+  /* Initialize heap end at first call */
+  if (NULL == __sbrk_heap_end)
+  {
+    __sbrk_heap_end = &_end;
+  }
 
-	    suma = a + b;
-	    resta = a - b;
-	    multiplicacion = a * b;
-	    division = a / b;
+  /* Protect heap from growing into the reserved MSP stack */
+  if (__sbrk_heap_end + incr > max_heap)
+  {
+    errno = ENOMEM;
+    return (void *)-1;
+  }
 
-	    printf("Suma: %d\n", suma);
-	    printf("Resta: %d\n", resta);
-	    printf("Multiplicacion: %d\n", multiplicacion);
-	    printf("Division: %d\n", division);
+  prev_heap_end = __sbrk_heap_end;
+  __sbrk_heap_end += incr;
 
-	    while(1)
-	    {
-
-	    }
+  return (void *)prev_heap_end;
 }
