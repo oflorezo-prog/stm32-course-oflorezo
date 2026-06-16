@@ -113,11 +113,11 @@ int main(void)
 
     // Configuracion de EXTI para las interrupciones de los pines 10 y 12
     RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
-    SYSCFG->EXTICR[2] &= ~(0xF << 8);   // EXTI10
-    SYSCFG->EXTICR[3] &= ~(0xF << 0);   // EXTI12
+    SYSCFG->EXTICR[2] &= ~(15 << 8);   // EXTI10
+    SYSCFG->EXTICR[3] &= ~(15 << 0);   // EXTI12
 
-    SYSCFG->EXTICR[2] |= (0x2 << 8);    // Mapear a Puerto C
-    SYSCFG->EXTICR[3] |= (0x2 << 0);
+    SYSCFG->EXTICR[2] |= (2 << 8);    // Mapear a Puerto C
+    SYSCFG->EXTICR[3] |= (2 << 0);
 
     EXTI->RTSR &= ~(1 << 12);
     EXTI->FTSR |=  (1 << 12);   // Flanco bajada para PC12
