@@ -104,7 +104,7 @@ int main(void)
     GPIOC->MODER &= ~(3 << (10*2));
     GPIOC->MODER &= ~(3 << (12*2));
 
-    // Ponerles pull-up porque si no rebota
+    // Ponerles pull-up, resistencias pull up internas, no flota la entrada
     GPIOC->PUPDR &= ~(3 << (10*2));
     GPIOC->PUPDR |=  (1 << (10*2));
 
@@ -384,7 +384,7 @@ void TIM3_IRQHandler(void)
 // Interrupcion de los pines PC10 y PC12
 void EXTI15_10_IRQHandler(void)
 {
-    // Handler para PC10 (Suma al contador)
+    // Handler para PC10 (pequeño rollover amigable)
     if((EXTI->PR & (1 << 10)) && !b10)
     {
         EXTI->PR |= (1 << 10);
@@ -399,7 +399,7 @@ void EXTI15_10_IRQHandler(void)
         b10 = 1; // Bloquear hasta que reinicie TIM4
     }
 
-    // Handler para PC12 (Resta al contador)
+    // Handler para PC12 (Rollover inferior)
     if((EXTI->PR & (1 << 12)) && !b12)
     {
         EXTI->PR |= (1 << 12);
